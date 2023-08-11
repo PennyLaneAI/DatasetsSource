@@ -1,0 +1,6 @@
+pennylane==0.30.0
+numpy
+scipy
+pylanczos
+networkx
+pytest
