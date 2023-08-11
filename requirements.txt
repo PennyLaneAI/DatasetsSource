@@ -4,3 +4,5 @@ scipy
 pylanczos
 networkx
 pytest
+zstd
+dill
