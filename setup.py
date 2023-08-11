@@ -12,7 +12,7 @@
 from setuptools import setup
 
 setup(
-    name="qdatasetgen",
+    name="quantum_datasets",
     version="0.1.0",
     description="Quantum datasets generator scripts",
     url="https://github.com/PennyLaneAI/DatasetsSource",

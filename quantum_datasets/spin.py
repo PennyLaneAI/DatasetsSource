@@ -125,7 +125,7 @@ class HeisenbergModel(SpinSystem):
         super().__init__(num_systems, "Heisenberg", periodicity, lattice, layout)
         self.Jxy = J
         self.Jz = np.linspace(0, -2, self.num_systems)
-        self.params = {"Jxy": self.Jxy, "Jz": self.Jz}
+        self.parameters = {"Jxy": self.Jxy, "Jz": self.Jz}
         self.num_phases = 2
         # self.hamiltonian = self.build_hamiltonian()
         self.m = layout[0]
@@ -386,7 +386,10 @@ class BoseHubbardModel(SpinSystem):
         def op_sum_to_ham(op_sum_obj):
             coeffs, ops = [], []
             for term in list(op_sum_obj):
-                coeffs.append(term.data[0][0])
+                try:
+                    coeffs.append(term.data[0][0])
+                except IndexError:
+                    coeffs.append(term.data[0])
                 if any(
                     [
                         isinstance(term.hyperparameters["base"], x)
@@ -454,7 +457,9 @@ class BoseHubbardModel(SpinSystem):
                     )
                 )
 
-            hamils.append(op_sum_to_ham(qml.simplify(t_term + u_term)))
+            simp_ham = op_sum_to_ham(qml.simplify(t_term + u_term))
+            hamils.append(qml.simplify(simp_ham))
+
         return hamils
 
     def build_order_params(self, psi0):

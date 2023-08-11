@@ -27,8 +27,7 @@ os.environ["OMP_PLACES"] = "threads"
 sys.setrecursionlimit(10000)
 
 
-# pylint: disable=fixme
-# pylint: disable=invalid-name
+# pylint: disable=fixme, invalid-name
 class SpinDataPipeline(DataPipeline):
     """Quantum Spins Data Pipeline Class"""
 

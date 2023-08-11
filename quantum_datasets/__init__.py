@@ -12,6 +12,4 @@
 """__init__ file for qdatagen."""
 
 from .pipeline import DataPipeline
-from .qchem import ChemDataPipeline
-from .qspin import SpinDataPipeline
-from .spin import SpinSystem, IsingModel, HeisenbergModel, FermiHubbardModel, BoseHubbardModel
+from .generator import qchem_data_generate, qspin_data_generate

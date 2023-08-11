@@ -87,7 +87,7 @@ class ChemDataPipeline(DataPipeline):
                 else:
                     qml.QubitUnitary(triple_excitation_matrix(params[i]), wires=gate)
 
-        dev = qml.device("lightning.kokkos", wires=ham.wires)
+        dev = qml.device("lightning.qubit", wires=ham.wires)
 
         @qml.qnode(dev, diff_method="adjoint")
         def cost_fn_1(param, excitations):
@@ -225,7 +225,7 @@ class ChemDataPipeline(DataPipeline):
     def get_brt_groupings(molecule):
         """Get basis-rotation groupings"""
         _, one, two = qml.qchem.electron_integrals(molecule)()
-        coeffs, ops, unitaries = qml.qchem.basis_rotation(one, two, tol_factor=1.0e-5)
+        coeffs, ops, unitaries = qml.qchem.basis_rotation(one, two, tol_factor=1.0e-5)        
         return (coeffs, ops, unitaries)
 
     @staticmethod
@@ -434,7 +434,7 @@ class ChemDataPipeline(DataPipeline):
         prog_bar.set_description("Molecule Generation")
         mol = qml.qchem.Molecule(symbols, geometry, charge=charge, basis_name=basis_name)
 
-        path = f"data/qchem/{molname}/{mol.basis_name.upper()}/{descriptor}/"
+        path = f"datasets/qchem/{molname}/{mol.basis_name.upper()}/{descriptor}/"
         Path(path).mkdir(parents=True, exist_ok=True)
         if not filename:
             filename = f"{path}{molname}_{mol.basis_name.upper()}_{descriptor}_full.dat"
