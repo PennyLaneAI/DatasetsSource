@@ -18,8 +18,7 @@ from tqdm import tqdm
 import pennylane as qml
 
 
-# pylint: disable=fixme
-# pylint: disable=invalid-name
+# pylint: disable=fixme, invalid-name, too-many-instance-attributes
 class SpinSystem:
     """Spin System Class"""
 
@@ -59,8 +58,7 @@ class SpinSystem:
         return np.conjugate(psi.T) @ order_op @ psi
 
 
-# pylint: disable=line-too-long
-# pylint: disable=anomalous-backslash-in-string
+# pylint: disable=line-too-long, anomalous-backslash-in-string, too-many-arguments, too-many-instance-attributes, too-many-arguments, too-many-instance-attributes
 class IsingModel(SpinSystem):
     """IsingModel System Class"""
 
@@ -119,8 +117,7 @@ class IsingModel(SpinSystem):
         return self.build_phase_data(psi0, Mz)
 
 
-# pylint: disable=line-too-long
-# pylint: disable=anomalous-backslash-in-string
+# pylint: disable=line-too-long, anomalous-backslash-in-string, too-many-arguments, too-many-instance-attributes, too-many-instance-attributes
 class HeisenbergModel(SpinSystem):
     """HeisenbergModel System Class"""
 
@@ -173,8 +170,7 @@ class HeisenbergModel(SpinSystem):
         return self.build_phase_data(psi0, Mz)
 
 
-# pylint: disable=line-too-long
-# pylint: disable=anomalous-backslash-in-string
+# pylint: disable=line-too-long, anomalous-backslash-in-string, too-many-arguments, too-many-instance-attributes
 class FermiHubbardModel(SpinSystem):
     """FermiHubbard System Class"""
 
@@ -266,8 +262,7 @@ class FermiHubbardModel(SpinSystem):
         return m_lor_op, m2_op
 
 
-# pylint: disable=line-too-long
-# pylint: disable=anomalous-backslash-in-string
+# pylint: disable=line-too-long, anomalous-backslash-in-string, too-many-arguments, too-many-instance-attributes
 class BoseHubbardModel(SpinSystem):
     """BoseHubbard System Class"""
 

@@ -36,9 +36,8 @@ sys.setrecursionlimit(10000)
 qml.disable_return()
 
 
-# pylint: disable=fixme
-# pylint: disable=invalid-name
-# pylint: disable=line-too-long
+# pylint: disable=fixme, invalid-name, line-too-long, no-member
+# pylint: disable=too-many-locals, too-many-arguments, too-many-instance-attributes
 class ChemDataPipeline(DataPipeline):
     """Quantum Chemistry Data Pipeline Class"""
 
