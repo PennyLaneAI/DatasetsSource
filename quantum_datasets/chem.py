@@ -65,6 +65,13 @@ geom_struct = {
             [2.5 * x, 0.0, 0.0],
         ]
     ),
+    "CH2": lambda x: np.array(
+        [
+            [0.0, 0.0, x * np.cos(1.182485) / 4],  # H-C-H 135.503
+            [0.0,  x * np.sin(1.182485), -3 * x * np.cos(1.182485) / 4],
+            [0.0, -x * np.sin(1.182485), -3 * x * np.cos(1.182485) / 4],
+        ]
+    ),
     "BeH2": lambda x: np.array([[0.0, 0.0, 0.0], [-x, 0.0, 0.0], [x, 0.0, 0.0]]),  # linear
     "H2O": lambda x: np.array(
         [
@@ -194,11 +201,12 @@ bond_struct = {
     "HF": np.linspace(0.5, 2.1, 41),  # linear
     "OH-": np.linspace(0.5, 2.1, 41),  # linear
     "H6": np.linspace(0.5, 1.3, 41),  # linear - chain
-    "BeH2": np.linspace(0.5, 2.1, 41)[37:38],  # linear
+    "CH2": np.linspace(0.5, 2.1, 41),  # C-H-C 135.5
+    "BeH2": np.linspace(0.5, 2.1, 41),  # linear
     "H2O": np.linspace(0.5, 2.1, 41),  # H-O-H 104.476
-    "H8": np.linspace(0.5, 0.9, 41)[33:],  # linear - chain
-    "BH3": np.linspace(0.5, 1.7, 41)[33:],  # planaer H-B-H 120
-    "NH3": np.linspace(0.5, 1.7, 41)[3:4],
+    "H8": np.linspace(0.5, 0.9, 41),  # linear - chain
+    "BH3": np.linspace(0.5, 1.7, 41),  # planaer H-B-H 120
+    "NH3": np.linspace(0.5, 1.7, 41),
     "H3O+": np.linspace(0.7, 1.3, 41),
     "CH4": np.linspace(0.5, 2.5, 11),
     "NH4+": np.linspace(0.5, 2.1, 41),
