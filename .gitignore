@@ -1,0 +1,5 @@
+datasets/
+.DS_Store
+__pycache__
+*.egg-info
+*.hdf5
