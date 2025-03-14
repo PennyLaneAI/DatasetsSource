@@ -23,7 +23,8 @@ import scipy as sp
 from tqdm.auto import tqdm
 import pennylane as qml
 from pennylane import numpy as pnp
-from pennylane.grouping import pauli_word_to_string, string_to_pauli_word
+from pennylane.pauli import pauli_word_to_string, string_to_pauli_word
+from pyscf import gto
 
 from .pipeline import DataPipeline
 from .chem import triple_excitation_matrix, excitations, core_orbitals
@@ -52,7 +53,7 @@ class ChemDataPipeline(DataPipeline):
         self.red_mats = None
         super().__init__()
 
-    # pylint: disable=redefined-outer-name
+    # pylint: disable=redefined-outer-name, too-many-branches, too-many-statements
     def run_adaptive_vqe(self, mol, hf_state, ham, classical_energy, use_triples=False):
         """Runs VQE routine implementing AdaptiveGivens template"""
 
@@ -127,8 +128,8 @@ class ChemDataPipeline(DataPipeline):
             grad_bar.set_description(f"GradExc: {np.round(pnp.abs(energy - prev_energy), 5)}")
             if pnp.abs(energy - prev_energy) <= 1e-3:
                 break
-            else:
-                prev_energy = energy
+
+            prev_energy = energy
 
         @qml.qnode(dev, diff_method="adjoint")
         def cost_fn_2(param, excitations, gates_select, params_select):
@@ -168,8 +169,8 @@ class ChemDataPipeline(DataPipeline):
             pbar.set_description(f"AdaptGiv: Chem. Acc.  = {chem_acc} Hartree\t")
             if pnp.abs(chem_acc) <= 1e-3 or pnp.abs(energy - prev_energy) <= 1e-6:
                 break
-            else:
-                prev_energy = energy
+
+            prev_energy = energy
 
         self.opt_ag_params = params.copy()
 
@@ -225,7 +226,7 @@ class ChemDataPipeline(DataPipeline):
     def get_brt_groupings(molecule):
         """Get basis-rotation groupings"""
         _, one, two = qml.qchem.electron_integrals(molecule)()
-        coeffs, ops, unitaries = qml.qchem.basis_rotation(one, two, tol_factor=1.0e-5)        
+        coeffs, ops, unitaries = qml.qchem.basis_rotation(one, two, tol_factor=1.0e-5)
         return (coeffs, ops, unitaries)
 
     @staticmethod
@@ -272,7 +273,7 @@ class ChemDataPipeline(DataPipeline):
                             new_dict[ky] += res_dict[key]
                         exp = 0.0
                         for key, counts in new_dict.items():
-                            exp += (-1) ** (sum([int(i) for i in key])) * counts
+                            exp += (-1) ** (sum(int(i) for i in key)) * counts
                     exps[ind] = exp * coeff / dev.shots
 
                 energy += np.sum(exps)
@@ -288,6 +289,195 @@ class ChemDataPipeline(DataPipeline):
             res_dicts.append(res_dict)
 
         return res_dicts
+
+    # pylint: disable=import-outside-toplevel, dangerous-default-value
+    @staticmethod
+    def get_initial_states(
+        symbols,
+        geometry,
+        charge,
+        basis_name,
+        init_state_tol=1e-4,
+        state_qualities=(1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.01, 0.001),
+    ):
+        """
+        Get initial states for quantum chemistry simulations.
+        This function performs Hartree-Fock (HF) and Complete Active Space Configuration Interaction (CASCI) calculations
+        to determine the initial states for quantum chemistry simulations. It iterates over different spin states to find
+        the true ground state, and builds an initial state from that of varying quality, either by
+        truncating the number of Slater determinants in the perfect ground state description, or
+        by mixing in a relevant fraction of the first excited state, when truncation is not possible.
+
+        Args:
+            symbols (list of str): List of atomic symbols.
+            geometry (list of list of float): List of atomic coordinates in Bohr.
+            charge (int): The charge of the molecule.
+            basis_name (str): The basis set name.
+            init_state_tol (float, optional): Tolerance for which Slater determinants to keep in initial state preparation.
+                All determinants with coefficients below this value are set to zero. Default is 1e-4.
+            state_qualities (Sequence[float], optional): List of state qualities for truncation and re-allocation. 
+                Default is ``(1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.01, 0.001)``.
+
+        Returns:
+            tuple: A tuple containing:
+            - dets (np.ndarray): Array of determinants.
+            - coeffs (np.ndarray): Array of coefficients representing the determinants.
+
+        Notes:
+            - The function uses PySCF for quantum chemistry calculations and PennyLane for quantum computing operations.
+        """
+
+        try:
+            from overlapper.utils import get_mol_attrs
+            from overlapper.state import do_hf, do_casci, casci_state
+            from pennylane.qchem.convert import _sign_chem_to_phys
+        except ImportError as exc:
+            raise ImportError(
+                "To use the get_initial_states function, please install the overlapper package via "
+                "pip install git+https://github.com/XanaduAI/Overlapper.git"
+            ) from exc
+
+        def _casci_to_superposition(keys, norbs):
+            new_dets = []
+            for key in keys:
+                new_det = []
+                int_a, int_b = key
+                bin_a = bin(int_a)[2:][::-1]
+                bin_b = bin(int_b)[2:][::-1]
+                bin_a += "0" * (norbs - len(bin_a))
+                bin_b += "0" * (norbs - len(bin_b))
+                for bi, ba in zip(bin_a, bin_b):
+                    new_det.append(int(bi))
+                    new_det.append(int(ba))
+                new_dets.append(new_det)
+
+            return np.array(new_dets)
+
+        bohr_to_ang = 0.529177210903 # conversion factor from Bohr to Angstrom
+        atom = [[name, np.array(geom) * bohr_to_ang] for (name, geom) in zip(symbols, geometry)]
+        mol = gto.M(atom=atom, basis=basis_name, charge=charge)
+
+        # loop over spins to find true ground state
+        spins = list(range(9))
+        hf_solver_array = []
+        solver_array = []
+        e_array = []
+        ss_array = []
+        sz_array = []
+        for sz in spins:
+            print(f"\n\tBegin calculation with Sz = {sz}.")
+            # create molecule and set its spin
+            try:
+                assert (
+                    sz % 2 == int(mol.nelectron) % 2
+                ), f"Proposed spin {sz} impossible for given number of electrons {mol.nelectron}."
+                mol_copy = gto.M(atom=atom, basis=basis_name, charge=charge, spin=sz)
+                ncas, nelecas_a, nelecas_b = get_mol_attrs(mol_copy)
+                assert (
+                    nelecas_a <= ncas
+                ), f"More electrons in a sector {nelecas_a} than orbitals {ncas}."
+                assert (
+                    nelecas_b <= ncas
+                ), f"More electrons in b sector {nelecas_b} than orbitals {ncas}."
+                # run an HF calculation
+                if np.abs(sz) < 1e-2:
+                    hftype = "rhf"
+                else:
+                    hftype = "rohf"
+                hf, hf_e, hf_ss, hf_sz = do_hf(mol_copy, hftype=hftype)
+                print(f"\nRHF energy: {hf_e[0]:.3f}")
+                print(f"\nRHF S^2 and Sz: {hf_ss[0]:.3f}, {hf_sz[0]:.3f}")
+                # run a full CI calculation
+                casci, casci_e, casci_ss, casci_sz = do_casci(
+                    hf, ncas, (nelecas_a, nelecas_b), maxiter=1000, mem=8500, nroots=2, verbose=0
+                )
+                print(f"\nCASCI energy: {casci_e}")
+                print(f"\nCASCI spins: {casci_ss}, {casci_sz}")
+
+            except AssertionError:
+                print(
+                    f"\nCalculation on molecule with Sz = {sz} could not be done."
+                    f" Check your electron counts.\n"
+                )
+                continue
+
+            hf_solver_array.append(hf)
+            solver_array.append(casci)
+            e_array.append(casci_e)
+            ss_array.append(casci_ss)
+            sz_array.append(casci_sz)
+
+        assert (
+            len(solver_array) > 0
+        ), "None of the spin calculations you supplied worked. Pick different spins."
+
+        # select true ground state
+        minvals = [elem[0] for elem in e_array]
+        minidx = np.where(minvals == min(minvals))[0][0]
+        hf = hf_solver_array[minidx]
+        casci, casci_e, casci_ss, casci_sz = (
+            solver_array[minidx],
+            e_array[minidx],
+            ss_array[minidx],
+            sz_array[minidx],
+        )
+        casci_sz = np.array(np.array(casci_sz).round(decimals=0), dtype=int)
+        print(f"All energies {e_array}")
+        print(f"Lowest energy sector index {minidx}")
+        print(
+            f"Sector picked: energy of solver {casci.e_tot}, energy array "
+            f"{casci_e}, spins {casci_ss}, spin projections {casci_sz}"
+        )
+
+        # grab the coefficients and Slaters
+        wf_0 = casci_state(casci, state=0, tol=init_state_tol)
+        wf_0 = _sign_chem_to_phys(wf_0, mol.nao)
+        wf_1 = casci_state(casci, state=1, tol=init_state_tol)
+        wf_1 = _sign_chem_to_phys(wf_1, mol.nao)
+        dets_0, coeffs_0 = _casci_to_superposition(wf_0.keys(), mol.nao), np.array(
+            list(wf_0.values())
+        )
+        dets_1, coeffs_1 = _casci_to_superposition(wf_1.keys(), mol.nao), np.array(
+            list(wf_1.values())
+        )
+
+        # loop over state quality -- truncate and re-allocate
+        ovlps = np.cumsum(np.abs(coeffs_0) ** 2)
+        for state_quality in state_qualities:
+
+            idx = np.where((state_quality > ovlps) & (state_quality < ovlps))
+
+            dets = []
+            coeffs = []
+
+            if idx[0].size == 0:
+
+                for jj, elem in enumerate(dets_0):
+                    dets += [elem]
+                    jj_idx = np.where(np.all(np.array(dets_1) == np.array(elem), axis=1))[0]
+                    if len(jj_idx) > 0:
+                        coeffs += [
+                            float(
+                                np.sqrt(state_quality) * coeffs_0[jj]
+                                + np.sqrt(1 - state_quality) * coeffs_1[jj_idx][0]
+                            )
+                        ]
+                    else:
+                        coeffs += [float(np.sqrt(state_quality) * coeffs_0[jj])]
+
+                for jj, elem in enumerate(dets_1):
+                    if elem not in dets_0:
+                        dets += [elem]
+                        coeffs += [np.sqrt(1 - state_quality) * coeffs_1[jj]]
+
+                dets = np.array(dets)
+                coeffs = np.array(coeffs)
+
+            else:
+                dets = np.array(dets_0)[:idx]  # [D x ncas], list of idx lists, each of length ncas
+                coeffs = np.array(coeffs_0)[:idx]  # [D]
+
+        return dets, coeffs
 
     @staticmethod
     def get_brt_samples(groupings, vqe_gates, hf_state, hamiltonian, shots=10000, check=False):
@@ -332,7 +522,7 @@ class ChemDataPipeline(DataPipeline):
                             new_dict[ky] += res_dict[key]
                         exp = 0.0
                         for key, counts in new_dict.items():
-                            exp += (-1) ** (sum([int(i) for i in key])) * counts
+                            exp += (-1) ** (sum(int(i) for i in key)) * counts
                     exps[ind] = exp * coeff / dev.shots
                 energy += np.sum(exps)
             return energy
@@ -412,7 +602,8 @@ class ChemDataPipeline(DataPipeline):
         matrix += sum(temp_mats)
         return matrix
 
-    # pylint: disable=dangerous-default-value
+    # pylint: disable=too-many-branches, too-many-statements
+    # pylint: disable=dangerous-default-value, too-many-positional-arguments
     def pipeline(
         self,
         molname,
@@ -478,7 +669,7 @@ class ChemDataPipeline(DataPipeline):
             # data generation is being done for multiple geometries.
             sparse_hamiltonian = qml.SparseHamiltonian(sparse_ham, hamiltonian.wires)
 
-            wire_map = {idx: wire for idx, wire in enumerate(hamiltonian.wires)}
+            wire_map = dict(enumerate(hamiltonian.wires))
             f["hamiltonian"] = {
                 "terms": self.convert_ham_obs(hamiltonian, wire_map),
                 "wire_map": wire_map,
@@ -684,6 +875,14 @@ class ChemDataPipeline(DataPipeline):
                 f["hf_state"],
                 hamiltonian,
                 shots=10000,
+            )
+
+        prog_bar.set_description("Initial State Preparation")
+        if "initial_states" not in skip_keys and (
+            "initial_states" not in present_keys or "initial_states" in update_keys
+        ):
+            f["initial_state_dets"], f["initial_state_coeffs"] = self.get_initial_states(
+                symbols, geometry, charge, basis_name, init_state_tol=1e-6
             )
 
         prog_bar.set_description("We did it again!")
