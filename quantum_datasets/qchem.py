@@ -273,7 +273,7 @@ class ChemDataPipeline(DataPipeline):
                             new_dict[ky] += res_dict[key]
                         exp = 0.0
                         for key, counts in new_dict.items():
-                            exp += (-1) ** (sum([int(i) for i in key])) * counts
+                            exp += (-1) ** (sum(int(i) for i in key)) * counts
                     exps[ind] = exp * coeff / dev.shots
 
                 energy += np.sum(exps)
@@ -290,6 +290,7 @@ class ChemDataPipeline(DataPipeline):
 
         return res_dicts
 
+    # pylint: disable=import-outside-toplevel, dangerous-default-value
     @staticmethod
     def get_initial_states(
         symbols,
@@ -297,7 +298,7 @@ class ChemDataPipeline(DataPipeline):
         charge,
         basis_name,
         init_state_tol=1e-4,
-        state_qualities=[1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.01, 0.001],
+        state_qualities=(1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.01, 0.001),
     ):
         """
         Get initial states for quantum chemistry simulations.
@@ -313,8 +314,9 @@ class ChemDataPipeline(DataPipeline):
             charge (int): The charge of the molecule.
             basis_name (str): The basis set name.
             init_state_tol (float, optional): Tolerance for which Slater determinants to keep in initial state preparation.
-                            All determinants with coefficients below this value are set to zero. Default is 1e-4.
-            state_qualities (list of float, optional): List of state qualities for truncation and re-allocation. Default is [1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.01, 0.001].
+                All determinants with coefficients below this value are set to zero. Default is 1e-4.
+            state_qualities (Sequence[float], optional): List of state qualities for truncation and re-allocation. 
+                Default is ``(1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.01, 0.001)``.
 
         Returns:
             tuple: A tuple containing:
@@ -325,7 +327,7 @@ class ChemDataPipeline(DataPipeline):
             - The function uses PySCF for quantum chemistry calculations and PennyLane for quantum computing operations.
         """
 
-        try: # pylint: disable=import-outside-toplevel
+        try:
             from overlapper.utils import get_mol_attrs
             from overlapper.state import do_hf, do_casci, casci_state
             from pennylane.qchem.convert import _sign_chem_to_phys
@@ -464,9 +466,7 @@ class ChemDataPipeline(DataPipeline):
                         coeffs += [float(np.sqrt(state_quality) * coeffs_0[jj])]
 
                 for jj, elem in enumerate(dets_1):
-                    if elem in dets_0:
-                        continue
-                    else:
+                    if elem not in dets_0:
                         dets += [elem]
                         coeffs += [np.sqrt(1 - state_quality) * coeffs_1[jj]]
 
@@ -522,7 +522,7 @@ class ChemDataPipeline(DataPipeline):
                             new_dict[ky] += res_dict[key]
                         exp = 0.0
                         for key, counts in new_dict.items():
-                            exp += (-1) ** (sum([int(i) for i in key])) * counts
+                            exp += (-1) ** (sum(int(i) for i in key)) * counts
                     exps[ind] = exp * coeff / dev.shots
                 energy += np.sum(exps)
             return energy
@@ -602,7 +602,8 @@ class ChemDataPipeline(DataPipeline):
         matrix += sum(temp_mats)
         return matrix
 
-    # pylint: disable=dangerous-default-value, too-many-branches, too-many-statements
+    # pylint: disable=too-many-branches, too-many-statements
+    # pylint: disable=dangerous-default-value, too-many-positional-arguments
     def pipeline(
         self,
         molname,
