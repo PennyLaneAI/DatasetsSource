@@ -24,6 +24,7 @@ from tqdm.auto import tqdm
 import pennylane as qml
 from pennylane import numpy as pnp
 from pennylane.pauli import pauli_word_to_string, string_to_pauli_word
+from pyscf import gto
 
 from .pipeline import DataPipeline
 from .chem import triple_excitation_matrix, excitations, core_orbitals
@@ -52,7 +53,7 @@ class ChemDataPipeline(DataPipeline):
         self.red_mats = None
         super().__init__()
 
-    # pylint: disable=redefined-outer-name
+    # pylint: disable=redefined-outer-name, too-many-branches, too-many-statements
     def run_adaptive_vqe(self, mol, hf_state, ham, classical_energy, use_triples=False):
         """Runs VQE routine implementing AdaptiveGivens template"""
 
@@ -127,8 +128,8 @@ class ChemDataPipeline(DataPipeline):
             grad_bar.set_description(f"GradExc: {np.round(pnp.abs(energy - prev_energy), 5)}")
             if pnp.abs(energy - prev_energy) <= 1e-3:
                 break
-            else:
-                prev_energy = energy
+
+            prev_energy = energy
 
         @qml.qnode(dev, diff_method="adjoint")
         def cost_fn_2(param, excitations, gates_select, params_select):
@@ -168,8 +169,8 @@ class ChemDataPipeline(DataPipeline):
             pbar.set_description(f"AdaptGiv: Chem. Acc.  = {chem_acc} Hartree\t")
             if pnp.abs(chem_acc) <= 1e-3 or pnp.abs(energy - prev_energy) <= 1e-6:
                 break
-            else:
-                prev_energy = energy
+
+            prev_energy = energy
 
         self.opt_ag_params = params.copy()
 
@@ -289,8 +290,8 @@ class ChemDataPipeline(DataPipeline):
 
         return res_dicts
 
+    @staticmethod
     def get_initial_states(
-        hamiltonian,
         symbols,
         geometry,
         charge,
@@ -305,8 +306,8 @@ class ChemDataPipeline(DataPipeline):
         the true ground state, and builds an initial state from that of varying quality, either by
         truncating the number of Slater determinants in the perfect ground state description, or
         by mixing in a relevant fraction of the first excited state, when truncation is not possible.
+
         Args:
-            hamiltonian (qml.Hamiltonian): The Hamiltonian of the system.
             symbols (list of str): List of atomic symbols.
             geometry (list of list of float): List of atomic coordinates in Bohr.
             charge (int): The charge of the molecule.
@@ -314,38 +315,43 @@ class ChemDataPipeline(DataPipeline):
             init_state_tol (float, optional): Tolerance for which Slater determinants to keep in initial state preparation.
                             All determinants with coefficients below this value are set to zero. Default is 1e-4.
             state_qualities (list of float, optional): List of state qualities for truncation and re-allocation. Default is [1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.01, 0.001].
+
         Returns:
             tuple: A tuple containing:
             - dets (np.ndarray): Array of determinants.
             - coeffs (np.ndarray): Array of coefficients representing the determinants.
+
         Notes:
             - The function uses PySCF for quantum chemistry calculations and PennyLane for quantum computing operations.
         """
+
+        try: # pylint: disable=import-outside-toplevel
+            from overlapper.utils import get_mol_attrs
+            from overlapper.state import do_hf, do_casci, casci_state
+            from pennylane.qchem.convert import _sign_chem_to_phys
+        except ImportError as exc:
+            raise ImportError(
+                "To use the get_initial_states function, please install the overlapper package via "
+                "pip install git+https://github.com/XanaduAI/Overlapper.git"
+            ) from exc
 
         def _casci_to_superposition(keys, norbs):
             new_dets = []
             for key in keys:
                 new_det = []
-
                 int_a, int_b = key
                 bin_a = bin(int_a)[2:][::-1]
                 bin_b = bin(int_b)[2:][::-1]
                 bin_a += "0" * (norbs - len(bin_a))
                 bin_b += "0" * (norbs - len(bin_b))
-                for ii in range(len(bin_a)):
-                    new_det.append(int(bin_a[ii]))
-                    new_det.append(int(bin_b[ii]))
-
+                for bi, ba in zip(bin_a, bin_b):
+                    new_det.append(int(bi))
+                    new_det.append(int(ba))
                 new_dets.append(new_det)
 
             return np.array(new_dets)
 
-        bohr_to_ang = 0.529177210903
-        from pyscf import gto, scf, ao2mo
-        from overlapper.utils import get_mol_attrs
-        from overlapper.state import do_hf, do_casci, casci_state
-        from pennylane.qchem.convert import _sign_chem_to_phys
-
+        bohr_to_ang = 0.529177210903 # conversion factor from Bohr to Angstrom
         atom = [[name, np.array(geom) * bohr_to_ang] for (name, geom) in zip(symbols, geometry)]
         mol = gto.M(atom=atom, basis=basis_name, charge=charge)
 
@@ -401,7 +407,7 @@ class ChemDataPipeline(DataPipeline):
 
         assert (
             len(solver_array) > 0
-        ), f"None of the spin calculations you supplied worked. Pick different spins."
+        ), "None of the spin calculations you supplied worked. Pick different spins."
 
         # select true ground state
         minvals = [elem[0] for elem in e_array]
@@ -435,7 +441,7 @@ class ChemDataPipeline(DataPipeline):
 
         # loop over state quality -- truncate and re-allocate
         ovlps = np.cumsum(np.abs(coeffs_0) ** 2)
-        for ii, state_quality in enumerate(state_qualities):
+        for state_quality in state_qualities:
 
             idx = np.where((state_quality > ovlps) & (state_quality < ovlps))
 
@@ -596,7 +602,7 @@ class ChemDataPipeline(DataPipeline):
         matrix += sum(temp_mats)
         return matrix
 
-    # pylint: disable=dangerous-default-value
+    # pylint: disable=dangerous-default-value, too-many-branches, too-many-statements
     def pipeline(
         self,
         molname,
@@ -662,7 +668,7 @@ class ChemDataPipeline(DataPipeline):
             # data generation is being done for multiple geometries.
             sparse_hamiltonian = qml.SparseHamiltonian(sparse_ham, hamiltonian.wires)
 
-            wire_map = {idx: wire for idx, wire in enumerate(hamiltonian.wires)}
+            wire_map = dict(enumerate(hamiltonian.wires))
             f["hamiltonian"] = {
                 "terms": self.convert_ham_obs(hamiltonian, wire_map),
                 "wire_map": wire_map,
