@@ -881,7 +881,9 @@ class ChemDataPipeline(DataPipeline):
         if "initial_states" not in skip_keys and (
             "initial_states" not in present_keys or "initial_states" in update_keys
         ):
-            f["initial_state_dets"], f["initial_state_coeffs"] = self.get_initial_states(mol)
+            f["initial_state_dets"], f["initial_state_coeffs"] = self.get_initial_states(
+                symbols, geometry, charge, basis_name, init_state_tol=1e-6
+            )
 
         prog_bar.set_description("We did it again!")
         self.write_data(f, filename)
